@@ -1,7 +1,7 @@
 /* **************************
  * CSCI 420
  * Assignment 3 Raytracer
- * Name: <Your name here>
+ * Name: Ashwin Chakicherla
  * *************************
 */
 
@@ -25,6 +25,7 @@
 #endif
 
 #include <imageIO.h>
+#include <glm/glm.hpp>
 
 #define MAX_TRIANGLES 20000
 #define MAX_SPHERES 100
@@ -253,6 +254,7 @@ int loadScene(char *argv)
 
 void display()
 {
+  
 }
 
 void init()
