@@ -31,6 +31,8 @@
 #define MAX_SPHERES 100
 #define MAX_LIGHTS 100
 
+#define FURTHEST -10000000
+
 char * filename = NULL;
 
 //different display modes
@@ -40,11 +42,16 @@ char * filename = NULL;
 int mode = MODE_DISPLAY;
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 640
-#define HEIGHT 480
+#define WIDTH 320
+#define HEIGHT 240
+
+// aspect ratio of image render
+double aspectRatio = (double) WIDTH / (double) HEIGHT;
+double angle;
 
 //the field of view of the camera
 #define fov 60.0
+#define PI 3.14159265
 
 unsigned char buffer[HEIGHT][WIDTH][3];
 
@@ -60,6 +67,7 @@ struct Vertex
 struct Triangle
 {
   Vertex v[3];
+  glm::vec3 normal; // normal of the triangle (NOT normal of vertices)
 };
 
 struct Sphere
@@ -77,10 +85,25 @@ struct Light
   double color[3];
 };
 
+class Ray
+{
+  private:
+    glm::vec3 origin;
+    glm::vec3 direction;
+  public:
+    Ray(glm::vec3 o, glm::vec3 d){
+      origin = o; direction = d;
+    }
+
+    bool checkIntersect(Sphere& sphere, glm::vec3 intersect);
+    bool checkIntersect(Triangle& triangle, glm::vec3 intersect);
+};
+
 Triangle triangles[MAX_TRIANGLES];
 Sphere spheres[MAX_SPHERES];
 Light lights[MAX_LIGHTS];
 double ambient_light[3];
+glm::vec3 ambient;
 
 int num_triangles = 0;
 int num_spheres = 0;
@@ -90,22 +113,44 @@ void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned cha
 void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 
+glm::vec3 calculateCollisions(Ray& ray, glm::vec3& color, double& nearest){
+  // iterate through each triangle
+  for (int i = 0; i < num_triangles; i++){
+    glm::vec3 intersect(0, 0, FURTHEST);
+    if (ray.checkIntersect(triangles[i], intersect)){
+      if (intersect[2] > nearest){
+        
+      }
+    }
+  }
+}
+
+glm::vec3 traceRay(Ray &ray){
+  glm::vec3 color(1.0f);
+  double nearest = FURTHEST;
+}
+
+Ray calculateCameraRay(double x, double y){
+  double xCamera = ((2 * (x + 0.5) / (double) WIDTH) - 1) * aspectRatio * angle;
+  double yCamera = -(1 - 2 * (y + 0.5) / (double) HEIGHT) * angle;
+  glm::vec3 origin(0.0);
+  glm::vec3 direction(xCamera, yCamera, -1);
+  Ray ray(origin, direction);
+  return ray;
+}
 //MODIFY THIS FUNCTION
 void draw_scene()
 {
-  //a simple test output
-  for(unsigned int x=0; x<WIDTH; x++)
-  {
-    glPointSize(2.0);  
+  angle = tan((fov / 2) * PI / 180);
+  // begin ray tracing
+  for (unsigned int x = 0; x < WIDTH;  x++){
+    glPointSize(2.0);
     glBegin(GL_POINTS);
-    for(unsigned int y=0; y<HEIGHT; y++)
-    {
-      plot_pixel(x, y, x % 256, y % 256, (x+y) % 256);
+    for (unsigned int y = 0; y < HEIGHT; y++){
+      Ray trace = calculateCameraRay(x, y);
+      
     }
-    glEnd();
-    glFlush();
   }
-  printf("Done!\n"); fflush(stdout);
 }
 
 void plot_pixel_display(int x, int y, unsigned char r, unsigned char g, unsigned char b)
@@ -189,6 +234,7 @@ int loadScene(char *argv)
   printf("number of objects: %i\n",number_of_objects);
 
   parse_doubles(file,"amb:",ambient_light);
+  ambient = glm::vec3(ambient_light[0], ambient_light[1], ambient_light[2]);
 
   for(int i=0; i<number_of_objects; i++)
   {
@@ -257,6 +303,29 @@ void display()
   
 }
 
+void calculateTriangleNormals(){
+  glm::vec3 vector_12, vector_13; // vector v1-v2, v1-v3
+
+  for (int i = 0;  i < num_triangles; i++){
+    // make a glm::vec3 for v1, v2, v3
+    glm::vec3 vertex_1(triangles[i].v[0].position[0],
+                          triangles[i].v[0].position[1],
+                          triangles[i].v[0].position[2]);
+    glm::vec3 vertex_2(triangles[i].v[0].position[0],
+                       triangles[i].v[0].position[1],
+                       triangles[i].v[0].position[2]);
+    glm::vec3 vertex_3(triangles[i].v[0].position[0],
+                       triangles[i].v[0].position[1],
+                       triangles[i].v[0].position[2]);
+    // calculate vectors from v1
+    vector_12 = vertex_2 - vertex_1;
+    vector_13 = vertex_3 - vertex_1;
+    // calculate cross product (v1-v2 x v1-v3) and normalize
+    triangles[i].normal = glm::cross(vector_12, vector_13);
+    triangles[i].normal = glm::normalize(triangles[i].normal);
+  }
+}
+
 void init()
 {
   glMatrixMode(GL_PROJECTION);
@@ -264,8 +333,11 @@ void init()
   glMatrixMode(GL_MODELVIEW);
   glLoadIdentity();
 
-  glClearColor(0,0,0,0);
+  glClearColor(1.0f,1.0f,1.0f,1.0f);
   glClear(GL_COLOR_BUFFER_BIT);
+
+  calculateTriangleNormals();
+
 }
 
 void idle()
