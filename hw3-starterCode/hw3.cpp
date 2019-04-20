@@ -480,7 +480,7 @@ void draw_scene()
         glm::vec3 color(0.0f);
         for (int i = 0; i < 4; i++){
           glm::vec3 ray_color = traceRay(camera_rays[i]);
-          std::cout << "r" << i << ": " << ray_color[0] << " g: " << ray_color[1] << " b: " << ray_color[2] << std::endl;
+          // std::cout << "r" << i << ": " << ray_color[0] << " g: " << ray_color[1] << " b: " << ray_color[2] << std::endl;
           color += ray_color;
         }
         color = color / 4.0f;
