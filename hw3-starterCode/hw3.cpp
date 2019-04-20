@@ -25,9 +25,9 @@
 #endif
 
 #include <imageIO.h>
+#include <vector>
 #include <iostream>
 #include <glm/glm.hpp>
-#include "ray.h"
 
 #define MAX_TRIANGLES 20000
 #define MAX_SPHERES 100
@@ -44,8 +44,8 @@ char * filename = NULL;
 int mode = MODE_DISPLAY;
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 320
-#define HEIGHT 240
+#define WIDTH 1280
+#define HEIGHT 960
 
 // aspect ratio of image render
 double aspectRatio = (double) WIDTH / (double) HEIGHT;
@@ -54,6 +54,57 @@ double angle;
 //the field of view of the camera
 #define fov 60.0
 #define PI 3.14159265
+// soft shadows --> on by default
+#define SOFT_SHADOWS false
+#define SHADOW_SAMPLES 48
+
+#define SUPERSAMPLE false
+
+// CLASSES & STRUCTS
+struct Vertex
+{
+  double position[3];
+  double color_diffuse[3];
+  double color_specular[3];
+  double normal[3];
+  double shininess;
+};
+
+struct Triangle
+{
+  Vertex v[3];
+};
+
+struct Sphere
+{
+  double position[3];
+  double color_diffuse[3];
+  double color_specular[3];
+  double shininess;
+  double radius;
+};
+
+struct Light
+{
+  double position[3];
+  double color[3];
+};
+
+class Ray
+{
+private:
+  glm::vec3 origin;
+  glm::vec3 direction;
+
+public:
+  Ray(glm::vec3 o, glm::vec3 d)
+  {
+    origin = o;
+    direction = d;
+  }
+  bool checkIntersectSpheres(Sphere &sphere, glm::vec3 &intersect);
+  bool checkIntersectTriangles(Triangle &triangle, glm::vec3 &intersect);
+};
 
 unsigned char buffer[HEIGHT][WIDTH][3];
 
@@ -71,6 +122,86 @@ void plot_pixel_display(int x,int y,unsigned char r,unsigned char g,unsigned cha
 void plot_pixel_jpeg(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 void plot_pixel(int x,int y,unsigned char r,unsigned char g,unsigned char b);
 
+bool Ray::checkIntersectSpheres(Sphere &sphere, glm::vec3 &intersect)
+{
+  glm::vec3 dist = origin - glm::vec3(sphere.position[0], sphere.position[1], sphere.position[2]);
+
+  double t0, t1, tf;
+
+  double a = glm::dot(direction, direction);
+  double b = 2 * glm::dot(direction, dist);
+  double c = glm::dot(dist, dist) - std::pow(sphere.radius, 2);
+  double discriminant = std::pow(b, 2) - (4 * a * c);
+  if (discriminant < 0)
+  {
+    return false;
+  }
+
+  // If the discriminant is nearly equal (or equal) to 0, t0 = t1 = -1/2 * b / a;
+  else if (std::abs(discriminant) < 1e-8)
+  {
+    double q = -0.5f * b / a;
+    t0 = q;
+    t1 = q;
+  }
+
+  // If the discriminant is greater than 0, then determine the correct half of the sphere to intersect with
+  else
+  {
+    double q = (b > 0) ? -0.5f * (b + std::sqrt(discriminant)) : -0.5f * (b - std::sqrt(discriminant));
+    t0 = q / a;
+    t1 = c / q;
+  }
+
+  if (t0 < 0 && t1 < 0)
+  {
+    return false;
+  }
+
+  if (t0 > t1 && t1 > 0)
+  {
+    t0 = t1;
+  }
+
+  intersect = origin + (direction * (float)t0);
+  // std::cout << "intersect x: " << intersect[0] << " y: " << intersect[1] << " z: " << intersect[2] << std::endl;
+  return true;
+}
+
+bool Ray::checkIntersectTriangles(Triangle &triangle, glm::vec3 &intersect)
+{
+  glm::vec3 point_a(triangle.v[0].position[0], triangle.v[0].position[1], triangle.v[0].position[2]);
+  glm::vec3 point_b(triangle.v[1].position[0], triangle.v[1].position[1], triangle.v[1].position[2]);
+  glm::vec3 point_c(triangle.v[2].position[0], triangle.v[2].position[1], triangle.v[2].position[2]);
+
+  glm::vec3 normal = glm::normalize(glm::cross(point_b - point_a, point_c - point_a));
+
+  double angle = glm::dot(normal, direction);
+
+  if (std::abs(angle) < 1e-8)
+  {
+    return false;
+  }
+
+  glm::vec3 distance = point_a - origin;
+  double dist = glm::dot(distance, normal);
+
+  double t = dist / angle;
+  if (t < 0)
+  {
+    return false;
+  }
+
+  intersect = origin + (direction * (float)t);
+
+  if (glm::dot(normal, glm::cross(point_b - point_a, intersect - point_a)) < 0 || glm::dot(normal, glm::cross(point_c - point_b, intersect - point_b)) < 0 || glm::dot(normal, glm::cross(point_a - point_c, intersect - point_c)) < 0)
+  {
+    return false;
+  }
+
+  return true;
+}
+
 void clamp(double& num, float low, float high){
   if (num > high){
     num = high;
@@ -80,30 +211,6 @@ void clamp(double& num, float low, float high){
   }
 }
 
-<<<<<<< HEAD
-// std::vector<Light> getLightSamples(Light light){
-//   std::vector<Light> samples;
-//   for (int i = 0; i < SHADOW_SAMPLES; i++){
-//     // get random phi, theta, and radius
-//     double phi = ((double) (rand() % 360) * PI / 180);
-//     double theta = ((double) (rand() % 360) * PI / 180);
-//     double radius = ((double) rand() / (RAND_MAX)) / 10.0f;
-
-//     glm::vec3 newPos(light.position[0] + radius * std::sin(theta) * std::cos(phi), /* x offset */
-//                      light.position[1] + radius * std::sin(theta) * std::sin(phi), /* y offset */
-//                      light.position[2] + radius * std::cos(theta));                /* z offset */
-
-//     Light newLight;
-//     newLight.position[0] = newPos[0]; newLight.position[1] = newPos[1]; newLight.position[2] = newPos[2];
-//     newLight.color[0] = light.color[0] / SHADOW_SAMPLES; newLight.color[1] = light.color[1] / SHADOW_SAMPLES; newLight.color[2] = light.color[2] / SHADOW_SAMPLES;
-//     samples.push_back(newLight);
-//   }
-
-//   return samples;
-// }
-
-=======
->>>>>>> parent of 3b2bb8a... working main, broken soft shadows
 glm::vec3 calculateLighting(Sphere& sphere, Light& light, glm::vec3& intersect){
   glm::vec3 normal = glm::normalize(intersect - glm::vec3(sphere.position[0], sphere.position[1], sphere.position[2]));
   glm::vec3 light_direction = glm::normalize(glm::vec3(light.position[0], light.position[1], light.position[2]) - intersect);
@@ -189,145 +296,6 @@ glm::vec3 calculateLighting(Triangle& triangle, Light& light, glm::vec3& interse
                    light.color[2] * (diffuse[2] * light_magnitude + (spec[2] * pow(reflection_magnitude, shininess))));
 }
 
-<<<<<<< HEAD
-// FIXME: this needs to be fixed, not 100% working now
-
-// glm::vec3 calculateCollisions(Ray &ray, glm::vec3 &color, double &nearest, bool alpha)
-// {
-//   glm::vec3 returnColor = color;
-
-//   // iterate through each sphere
-//   for (int i = 0; i < num_spheres; i++)
-//   {
-//     glm::vec3 intersect(0, 0, FURTHEST);
-
-//     bool checkIntersect = ray.checkIntersectSpheres(spheres[i], intersect);
-//     // FIXME: COUT STATEMENT
-//     // std::cout << std::boolalpha << checkIntersect << " && " << intersect[2] << " && " << nearest << std::endl;
-//     if (checkIntersect && intersect[2] > nearest)
-//     {
-//       // FIXME: COUT STATEMENT
-//       std::cout << "INTERSECTED SPHERE" << std::endl;
-//       returnColor = glm::vec3(0.0f);
-//       // now check  for each light
-//       for (int j = 0; j < num_lights; j++)
-//       {
-//         bool light_on = true;
-
-//         std::vector<Light> samples = getLightSamples(lights[j]);
-        
-//         for (int l = 0; l < samples.size(); l++){
-//           glm::vec3 current_light_pos(samples[l].position[0], samples[l].position[1], samples[l].position[2]);
-//           Ray shadow_ray(intersect, glm::normalize(current_light_pos - intersect));
-
-//           // check shadow ray intersections with all other objects
-//           for (int k = 0; k < num_spheres; k++)
-//           {
-//             // check for sphere intersections now, excluding current object
-//             std::cout << num_spheres << std::endl;
-//             glm::vec3 shadow_intersect;
-//             if (shadow_ray.checkIntersectSpheres(spheres[k], shadow_intersect) && k != i)
-//             {
-//               if (glm::length(shadow_intersect - intersect) < glm::length(current_light_pos - intersect))
-//               {
-//                 light_on = false;
-//                 break;
-//               }
-//             }
-//           }
-
-//           // checks for triangle intersections second
-//           for (int k = 0; k < num_triangles; k++)
-//           {
-//             glm::vec3 shadow_intersect;
-//             if (shadow_ray.checkIntersectTriangles(triangles[k], shadow_intersect))
-//             {
-//               if (glm::length(shadow_intersect - intersect) < glm::length(current_light_pos - intersect))
-//               {
-//                 light_on = false;
-//                 break;
-//               }
-//             }
-//           }
-
-//           if (light_on)
-//           {
-//             returnColor = returnColor + calculateLighting(spheres[i], samples[l], intersect);
-//           }
-//         }
-//       }
-
-//       // new closest intersect
-//       nearest = intersect[2];
-//     }
-//   }
-
-//   // now check triangle collisions
-//   for (int i = 0; i < num_triangles; i++)
-//   {
-//     glm::vec3 intersect(0, 0, FURTHEST);
-//     bool checkIntersect = ray.checkIntersectTriangles(triangles[i], intersect);
-//     // FIXME: COUT STATEMENT
-//     // std::cout << std::boolalpha << checkIntersect << " && " << (intersect[2] > nearest) << std::endl;
-//     if (checkIntersect && intersect[2] > nearest)
-//     {
-//       // FIXME: COUT STATEMENT
-//       std::cout << "INTERSECTED TRIANGLE" << std::endl;
-//       returnColor = glm::vec3(0.0f);
-
-//       for (int j = 0; j < num_lights; j++)
-//       {
-
-//         std::vector<Light> samples = getLightSamples(lights[j]);
-
-//         for (int l = 0; l < samples.size(); l++){
-//           glm::vec3 current_light_pos(samples[l].position[0], samples[l].position[1], samples[l].position[2]);
-//           Ray shadow_ray(intersect, glm::normalize(current_light_pos - intersect));
-
-//           bool light_on = true;
-
-//           for (int k = 0; k < num_spheres; k++)
-//           {
-//             glm::vec3 shadow_intersect(0, 0, FURTHEST);
-//             if (shadow_ray.checkIntersectSpheres(spheres[k], shadow_intersect)){
-//               if (glm::length(shadow_intersect - intersect) < glm::length(current_light_pos - intersect)){
-//                 light_on = false;
-//                 break;
-//               }
-//             }
-//           }
-
-//           for (int k = 0; k < num_triangles; k++)
-//           {
-//             glm::vec3 shadow_intersect(0, 0, FURTHEST);
-//             if (shadow_ray.checkIntersectTriangles(triangles[k], shadow_intersect) && k != i)
-//             {
-//               if (glm::length(shadow_intersect - intersect) < glm::length(current_light_pos - intersect))
-//               {
-//                 light_on = false;
-//                 break;
-//               }
-//             }
-//           }
-//           if (light_on)
-//           {
-//             returnColor = returnColor + calculateLighting(triangles[i], lights[j], intersect);
-//           }
-//         }
-//         // new shadow ray starts from intersection point, towards the light source
-        
-//       }
-
-//       //new closest intersect
-//       nearest = intersect[2];
-//     }
-//   }
-
-//   return returnColor;
-// }
-
-=======
->>>>>>> parent of 3b2bb8a... working main, broken soft shadows
 glm::vec3 calculateCollisions(Ray& ray, glm::vec3& color, double& nearest){
   glm::vec3 returnColor = color;
 
@@ -337,7 +305,7 @@ glm::vec3 calculateCollisions(Ray& ray, glm::vec3& color, double& nearest){
 
     bool checkIntersect = ray.checkIntersectSpheres(spheres[i], intersect);
     // FIXME: COUT STATEMENT
-    std::cout << std::boolalpha << checkIntersect << " && " << intersect[2] << " && " << nearest << std::endl;
+    // std::cout << std::boolalpha << checkIntersect << " && " << intersect[2] << " && " << nearest << std::endl;
     if (checkIntersect && intersect[2] > nearest){
       // FIXME: COUT STATEMENT
       std::cout << "INTERSECTED SPHERE" << std::endl;
@@ -345,26 +313,21 @@ glm::vec3 calculateCollisions(Ray& ray, glm::vec3& color, double& nearest){
         // now check  for each light
         for (int j = 0; j < num_lights; j++){
           bool light_on = true;
-          std::cout << "test 1" << std::endl;
           glm::vec3 current_light_pos(lights[j].position[0], lights[j].position[1], lights[j].position[2]);
           Ray shadow_ray(intersect, glm::normalize(current_light_pos - intersect));
 
           // check shadow ray intersections with all other objects
-          std::cout << "test 2" << std::endl;
           for (int k = 0; k < num_spheres; k++){
           // check for sphere intersections now, excluding current object
-            std::cout << "test 3 -- entered loop" << std::endl;
             std::cout << num_spheres << std::endl;
             glm::vec3 shadow_intersect;
             if  (shadow_ray.checkIntersectSpheres(spheres[k], shadow_intersect) && k != i){
-              std::cout << "test 4 -- checkedIntersection" << std::endl;
               if (glm::length(shadow_intersect - intersect) < glm::length(current_light_pos - intersect))
               {
                 light_on = false;
                 break;
               }
             }
-            std::cout << "test 5 -- pastIntersection ifs" << std::endl;
           }
 
           // checks for triangle intersections second
@@ -396,7 +359,7 @@ glm::vec3 calculateCollisions(Ray& ray, glm::vec3& color, double& nearest){
     glm::vec3 intersect(0, 0, FURTHEST);
     bool checkIntersect = ray.checkIntersectTriangles(triangles[i], intersect);
     // FIXME: COUT STATEMENT
-    std::cout << std::boolalpha << checkIntersect  << " && " << (intersect[2] > nearest) << std::endl;
+    // std::cout << std::boolalpha << checkIntersect  << " && " << (intersect[2] > nearest) << std::endl;
     if (checkIntersect && intersect[2] > nearest){
       // FIXME: COUT STATEMENT
         std::cout << "INTERSECTED TRIANGLE" << std::endl;
@@ -449,7 +412,6 @@ glm::vec3 traceRay(Ray &ray){
   glm::vec3 color(1.0f);
   double closest_intersect = FURTHEST; // set the nearest intersect
 
-<<<<<<< HEAD
   // if (SOFT_SHADOWS){
   //   color = calculateCollisions(ray, color, closest_intersect, SOFT_SHADOWS);
   // }
@@ -457,11 +419,8 @@ glm::vec3 traceRay(Ray &ray){
     color = calculateCollisions(ray, color, closest_intersect);
   // }
  
-=======
-  color = calculateCollisions(ray, color, closest_intersect);
   
 
->>>>>>> parent of 3b2bb8a... working main, broken soft shadows
   color += ambient;
   // std::cout << "2r " << color[0] << " g " << color[1] << " b " << color[2] << std::endl;
 
@@ -515,9 +474,24 @@ void draw_scene()
     for (unsigned int y = 0; y < HEIGHT; y++){
       // FIXME: COUT STATEMENT
       std::cout << "x: " << x << " y: " << y << std::endl;
-      Ray trace = calculateCameraRay(x, y);
-      glm::vec3 color = traceRay(trace);
+      glm::vec3 color;
+      if (SUPERSAMPLE){
+        std::vector<Ray> camera_rays = calculateCameraRays(x, y);
+        glm::vec3 color(0.0f);
+        for (int i = 0; i < 4; i++){
+          glm::vec3 ray_color = traceRay(camera_rays[i]);
+          std::cout << "r" << i << ": " << ray_color[0] << " g: " << ray_color[1] << " b: " << ray_color[2] << std::endl;
+          color += ray_color;
+        }
+        color = color / 4.0f;
+      }
+      else{
+        Ray trace = calculateCameraRay(x, y);
+        color = traceRay(trace);
+      }
+      // std::cout << "r1: " << color[0] << " g: " << color[1] << " b: " << color[2] << std::endl;
       color = glm::clamp(color, 0.0f, 1.0f);
+      // std::cout << "r2: " << color[0] << " g: " << color[1] << " b: " << color[2] << std::endl;
       plot_pixel(x, y, color[0] * 255, color[1] * 255, color[2] * 255);
     }
 
