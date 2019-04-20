@@ -44,8 +44,8 @@ char * filename = NULL;
 int mode = MODE_DISPLAY;
 
 //you may want to make these smaller for debugging purposes
-#define WIDTH 1280
-#define HEIGHT 960
+#define WIDTH 1600
+#define HEIGHT 1200
 
 // aspect ratio of image render
 double aspectRatio = (double) WIDTH / (double) HEIGHT;
